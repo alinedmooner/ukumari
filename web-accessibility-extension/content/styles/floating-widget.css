@@ -371,6 +371,67 @@
   animation: wau-slide-in 0.3s ease;
 }
 
+/* Toast (feedback de atajos de teclado) */
+.wau-toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  z-index: 2147483647;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: wau-fade-in-out 2s ease;
+  background: #4caf50;
+}
+
+.wau-toast[data-state="off"] {
+  background: #f44336;
+}
+
+@keyframes wau-fade-in-out {
+  0%, 100% { opacity: 0; }
+  10%, 90% { opacity: 1; }
+}
+
+/* Notificación de activación de TTS */
+.wau-tts-notification {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #667eea;
+  color: white;
+  padding: 12px 24px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 2147483647;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  animation: wau-slide-down 0.3s ease;
+}
+
+.wau-tts-notification button {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+@keyframes wau-slide-down {
+  from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
 /* Reduced motion support */
 @media (prefers-reduced-motion: reduce) {
 
@@ -382,7 +443,9 @@
     transition: none;
   }
 
-  #wau-floating-panel {
+  #wau-floating-panel,
+  .wau-toast,
+  .wau-tts-notification {
     animation: none;
   }
 }
