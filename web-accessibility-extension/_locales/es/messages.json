@@ -1,8 +1,10 @@
 {
   "appName": {
-    "message": "Accesibilidad Web Universal"
+    "message": "Ukumari",
+    "description": "Nombre público de la extensión."
   },
   "appDesc": {
-    "message": "Mejora la accesibilidad de cualquier sitio web con herramientas visuales, de navegación y voz."
+    "message": "Mejora la accesibilidad de cualquier sitio web con herramientas visuales, de navegación y voz.",
+    "description": "Descripción corta mostrada en la tienda."
   }
 }

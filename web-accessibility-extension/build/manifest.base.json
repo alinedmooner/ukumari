@@ -1,5 +1,4 @@
 {
-  "manifest_version": 3,
   "name": "__MSG_appName__",
   "description": "__MSG_appDesc__",
   "version": "1.0.0",
@@ -9,30 +8,14 @@
     "48": "icons/48.png",
     "128": "icons/128.png"
   },
-  "permissions": [
-    "storage",
-    "activeTab",
-    "tts"
-  ],
-  "host_permissions": [
-    "<all_urls>"
-  ],
-  "action": {
-    "default_popup": "popup/popup.html",
-    "default_icon": {
-      "16": "icons/16.png",
-      "48": "icons/48.png",
-      "128": "icons/128.png"
-    }
-  },
-  "background": {
-    "service_worker": "background/service-worker.js"
-  },
+  "permissions": ["storage", "activeTab", "tts"],
+  "host_permissions": ["<all_urls>"],
+  "background_script": "background/service-worker.js",
+  "popup": "popup/popup.html",
+  "options_page": "options/options.html",
   "content_scripts": [
     {
-      "matches": [
-        "<all_urls>"
-      ],
+      "matches": ["<all_urls>"],
       "js": [
         "utils/messages.js",
         "utils/settings-store.js",
@@ -50,15 +33,7 @@
       "run_at": "document_idle"
     }
   ],
-  "options_page": "options/options.html",
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "content/styles/*.css"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
-  ]
+  "web_accessible_resources": ["content/styles/*.css"],
+  "firefox_id": "accesibilidad-web-universal@example.com",
+  "firefox_strict_min_version": "91.0"
 }

@@ -1,13 +1,19 @@
 {
   "manifest_version": 2,
-  "name": "Accesibilidad Web Universal",
-  "description": "Mejora la accesibilidad de cualquier sitio web con herramientas visuales, de navegaci\u00f3n y voz.",
+  "name": "__MSG_appName__",
+  "description": "__MSG_appDesc__",
   "version": "1.0.0",
+  "default_locale": "es",
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
   "permissions": [
     "storage",
     "activeTab",
-    "<all_urls>",
-    "tts"
+    "tts",
+    "<all_urls>"
   ],
   "background": {
     "scripts": [
@@ -28,7 +34,8 @@
         "<all_urls>"
       ],
       "js": [
-        "utils/storage.js",
+        "utils/messages.js",
+        "utils/settings-store.js",
         "utils/tts.js",
         "utils/keyboard-nav.js",
         "content/dom-injector.js",
@@ -48,15 +55,8 @@
     "open_in_tab": true
   },
   "web_accessible_resources": [
-    "content/styles/*.css",
-    "utils/*.js"
+    "content/styles/*.css"
   ],
-  "icons": {
-    "16": "icons/16.png",
-    "48": "icons/48.png",
-    "128": "icons/128.png"
-  },
-  "default_locale": "es",
   "applications": {
     "gecko": {
       "id": "accesibilidad-web-universal@example.com",

@@ -1,24 +1,20 @@
 // content/floating-widget.js
-// Floating accessibility widget shown on bottom-right corner
+// Widget flotante. Lee/escribe ajustes vía WAU_Settings (fuente única).
 (function() {
   'use strict';
 
-  // Prevent multiple instances
   if (window.__WAU_WIDGET_LOADED__) return;
   window.__WAU_WIDGET_LOADED__ = true;
 
   const WIDGET_ID = 'wau-floating-widget';
   const PANEL_ID = 'wau-floating-panel';
+  const Settings = window.WAU_Settings;
 
-  let settings = {
-    fontScale: 1.0,
-    colorTheme: "default",
-    highlightLinks: true,
-    ttsEnabled: true,
-    keyboardNav: true
-  };
+  if (!Settings) {
+    console.error('[WAU widget] WAU_Settings no disponible');
+    return;
+  }
 
-  // Create widget button
   function createWidget() {
     if (document.getElementById(WIDGET_ID)) return;
 
@@ -31,14 +27,10 @@
         <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2ZM21 9H15V22H13V16H11V22H9V9H3V7H21V9Z" fill="currentColor"/>
       </svg>
     `;
-    
     button.addEventListener('click', togglePanel);
     document.body.appendChild(button);
-    
-    return button;
   }
 
-  // Create floating panel
   function createPanel() {
     if (document.getElementById(PANEL_ID)) return;
 
@@ -66,15 +58,8 @@
             <span id="wau-font-value" aria-live="polite">100%</span>
             <button id="wau-increase-font" type="button" aria-label="Aumentar tamaño de texto">A+</button>
           </div>
-          <input 
-            id="wau-font-slider" 
-            type="range" 
-            min="0.8" 
-            max="2.0" 
-            step="0.1" 
-            value="1.0"
-            aria-label="Control deslizante de tamaño de texto"
-          />
+          <input id="wau-font-slider" type="range" min="0.8" max="2.0" step="0.1" value="1.0"
+            aria-label="Control deslizante de tamaño de texto" />
         </section>
 
         <section class="wau-section">
@@ -114,46 +99,21 @@
 
     document.body.appendChild(panel);
     attachEventListeners(panel);
-    
-    return panel;
   }
 
-  // Toggle panel visibility
   function togglePanel() {
-    const panel = document.getElementById(PANEL_ID) || createPanel();
+    const panel = document.getElementById(PANEL_ID);
     const isHidden = panel.style.display === 'none';
-    
     panel.style.display = isHidden ? 'block' : 'none';
-    
-    if (isHidden) {
-      panel.focus();
-      loadSettings();
-    }
+    if (isHidden) panel.focus();
   }
 
-  // Close panel
   function closePanel() {
     const panel = document.getElementById(PANEL_ID);
-    if (panel) {
-      panel.style.display = 'none';
-    }
+    if (panel) panel.style.display = 'none';
   }
 
-  // Load settings from storage
-  async function loadSettings() {
-    try {
-      const result = await chrome.storage.sync.get(['user_settings_v1']);
-      if (result.user_settings_v1) {
-        settings = { ...settings, ...result.user_settings_v1 };
-        updateUI();
-      }
-    } catch (e) {
-      console.error('Error loading settings:', e);
-    }
-  }
-
-  // Update UI with current settings
-  function updateUI() {
+  function renderUI(settings) {
     const fontSlider = document.getElementById('wau-font-slider');
     const fontValue = document.getElementById('wau-font-value');
     const themeSelect = document.getElementById('wau-theme-select');
@@ -161,166 +121,65 @@
     const ttsEnabled = document.getElementById('wau-tts-enabled');
     const keyboardNav = document.getElementById('wau-keyboard-nav');
 
-    if (fontSlider) fontSlider.value = settings.fontScale || 1.0;
-    if (fontValue) fontValue.textContent = Math.round((settings.fontScale || 1.0) * 100) + '%';
-    if (themeSelect) themeSelect.value = settings.colorTheme || 'default';
+    if (fontSlider) fontSlider.value = settings.fontScale ?? 1.0;
+    if (fontValue) fontValue.textContent = Math.round((settings.fontScale ?? 1.0) * 100) + '%';
+    if (themeSelect) themeSelect.value = settings.colorTheme ?? 'default';
     if (highlightLinks) highlightLinks.checked = settings.highlightLinks !== false;
     if (ttsEnabled) ttsEnabled.checked = settings.ttsEnabled !== false;
     if (keyboardNav) keyboardNav.checked = settings.keyboardNav !== false;
   }
 
-  // Save settings to storage
-  async function saveSettings() {
-    try {
-      await chrome.storage.sync.set({ user_settings_v1: settings });
-      // Broadcast to content script
-      window.postMessage({ 
-        type: 'wau:settings:update', 
-        value: settings 
-      }, '*');
-    } catch (e) {
-      console.error('Error saving settings:', e);
-    }
-  }
-
-  // Attach event listeners
   function attachEventListeners(panel) {
-    // Close button
-    const closeBtn = panel.querySelector('#wau-close-panel');
-    if (closeBtn) closeBtn.addEventListener('click', closePanel);
+    panel.querySelector('#wau-close-panel')?.addEventListener('click', closePanel);
 
-    // Font controls
-    const fontSlider = panel.querySelector('#wau-font-slider');
-    const fontValue = panel.querySelector('#wau-font-value');
-    const decreaseFont = panel.querySelector('#wau-decrease-font');
-    const increaseFont = panel.querySelector('#wau-increase-font');
+    panel.querySelector('#wau-font-slider')?.addEventListener('input', (e) => {
+      Settings.update({ fontScale: parseFloat(e.target.value) });
+    });
 
-    if (fontSlider) {
-      fontSlider.addEventListener('input', (e) => {
-        const value = parseFloat(e.target.value);
-        settings.fontScale = value;
-        if (fontValue) fontValue.textContent = Math.round(value * 100) + '%';
-        applyFontScale(value);
-        saveSettings();
-      });
-    }
+    panel.querySelector('#wau-decrease-font')?.addEventListener('click', async () => {
+      const current = (await Settings.get()).fontScale ?? 1.0;
+      Settings.update({ fontScale: Math.max(0.8, current - 0.1) });
+    });
 
-    if (decreaseFont) {
-      decreaseFont.addEventListener('click', () => {
-        const newValue = Math.max(0.8, (settings.fontScale || 1.0) - 0.1);
-        settings.fontScale = newValue;
-        if (fontSlider) fontSlider.value = newValue;
-        if (fontValue) fontValue.textContent = Math.round(newValue * 100) + '%';
-        applyFontScale(newValue);
-        saveSettings();
-      });
-    }
+    panel.querySelector('#wau-increase-font')?.addEventListener('click', async () => {
+      const current = (await Settings.get()).fontScale ?? 1.0;
+      Settings.update({ fontScale: Math.min(2.0, current + 0.1) });
+    });
 
-    if (increaseFont) {
-      increaseFont.addEventListener('click', () => {
-        const newValue = Math.min(2.0, (settings.fontScale || 1.0) + 0.1);
-        settings.fontScale = newValue;
-        if (fontSlider) fontSlider.value = newValue;
-        if (fontValue) fontValue.textContent = Math.round(newValue * 100) + '%';
-        applyFontScale(newValue);
-        saveSettings();
-      });
-    }
+    panel.querySelector('#wau-theme-select')?.addEventListener('change', (e) => {
+      Settings.update({ colorTheme: e.target.value });
+    });
 
-    // Theme select
-    const themeSelect = panel.querySelector('#wau-theme-select');
-    if (themeSelect) {
-      themeSelect.addEventListener('change', (e) => {
-        settings.colorTheme = e.target.value;
-        applyTheme(e.target.value);
-        saveSettings();
-      });
-    }
+    panel.querySelector('#wau-highlight-links')?.addEventListener('change', (e) => {
+      Settings.update({ highlightLinks: e.target.checked });
+    });
 
-    // Checkboxes
-    const highlightLinks = panel.querySelector('#wau-highlight-links');
-    if (highlightLinks) {
-      highlightLinks.addEventListener('change', (e) => {
-        settings.highlightLinks = e.target.checked;
-        applyHighlightLinks(e.target.checked);
-        saveSettings();
-      });
-    }
+    panel.querySelector('#wau-tts-enabled')?.addEventListener('change', (e) => {
+      Settings.update({ ttsEnabled: e.target.checked });
+    });
 
-    const ttsEnabled = panel.querySelector('#wau-tts-enabled');
-    if (ttsEnabled) {
-      ttsEnabled.addEventListener('change', (e) => {
-        settings.ttsEnabled = e.target.checked;
-        saveSettings();
-      });
-    }
+    panel.querySelector('#wau-keyboard-nav')?.addEventListener('change', (e) => {
+      Settings.update({ keyboardNav: e.target.checked });
+    });
 
-    const keyboardNav = panel.querySelector('#wau-keyboard-nav');
-    if (keyboardNav) {
-      keyboardNav.addEventListener('change', (e) => {
-        settings.keyboardNav = e.target.checked;
-        saveSettings();
-      });
-    }
+    panel.querySelector('#wau-reset-settings')?.addEventListener('click', () => {
+      Settings.reset();
+    });
 
-    // Reset button
-    const resetBtn = panel.querySelector('#wau-reset-settings');
-    if (resetBtn) {
-      resetBtn.addEventListener('click', async () => {
-        settings = {
-          fontScale: 1.0,
-          colorTheme: "default",
-          highlightLinks: true,
-          ttsEnabled: true,
-          keyboardNav: true
-        };
-        await saveSettings();
-        updateUI();
-        applyFontScale(1.0);
-        applyTheme('default');
-        applyHighlightLinks(true);
-      });
-    }
-
-    // Close on Escape
     panel.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        closePanel();
-      }
+      if (e.key === 'Escape') closePanel();
     });
   }
 
-  // Apply font scale
-  function applyFontScale(scale) {
-    document.documentElement.style.fontSize = `${scale}rem`;
-  }
-
-  // Apply theme
-  function applyTheme(themeName) {
-    document.body.setAttribute("data-theme", themeName || "default");
-  }
-
-  // Apply highlight links
-  function applyHighlightLinks(enabled) {
-    document.documentElement.setAttribute('data-highlight-links', enabled ? '1' : '0');
-  }
-
-  // Initialize widget
-  function init() {
-    // Wait for DOM to be ready
+  async function init() {
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => {
-        createWidget();
-        createPanel();
-        loadSettings();
-      });
-    } else {
-      createWidget();
-      createPanel();
-      loadSettings();
+      await new Promise((r) => document.addEventListener('DOMContentLoaded', r, { once: true }));
     }
+    createWidget();
+    createPanel();
+    renderUI(await Settings.get());
+    Settings.subscribe(renderUI);
   }
 
-  // Start
   init();
 })();

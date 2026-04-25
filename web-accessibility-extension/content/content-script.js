@@ -1,89 +1,60 @@
 // content/content-script.js
-// Note: utils are loaded as separate scripts in manifest.json
-// They export to window object: window.WAU_Storage, window.WAU_TTS, window.WAU_KB
-
+// Los utils (settings-store, tts, keyboard-nav, dom-injector) ya están
+// cargados antes que este script según el orden declarado en manifest.json.
 (async () => {
-  // Wait for utility scripts to load
-  await new Promise(resolve => {
-    if (window.WAU_Storage && window.WAU_TTS && window.WAU_KB) {
-      resolve();
-    } else {
-      const checkInterval = setInterval(() => {
-        if (window.WAU_Storage && window.WAU_TTS && window.WAU_KB) {
-          clearInterval(checkInterval);
-          resolve();
-        }
-      }, 50);
-    }
-  });
+  'use strict';
 
-  const { getSettings, setSettings } = window.WAU_Storage;
+  const Settings = window.WAU_Settings;
   const TTS = window.WAU_TTS;
   const KB = window.WAU_KB;
 
-  // Initialize TTS
-  console.log('[WAU] Inicializando Text-to-Speech...');
-  TTS.initTTS().then(ready => {
-    if (ready) {
-      console.log('[WAU] TTS inicializado correctamente');
-    } else {
-      console.warn('[WAU] TTS no disponible, usando fallback');
-    }
-  });
+  if (!Settings || !TTS || !KB) {
+    console.error('[WAU] utils no disponibles. Revisar orden de scripts en manifest.');
+    return;
+  }
 
-  // Inject CSS assets
+  // Inyección de assets (CSS y skip link).
   window.__WAU_INJECTOR__?.injectCssFile('content/styles/themes.css');
   window.__WAU_INJECTOR__?.injectCssFile('content/styles/links-highlight.css');
   window.__WAU_INJECTOR__?.injectCssFile('content/styles/floating-widget.css');
   window.__WAU_INJECTOR__?.injectSkipToContent();
 
-  let settings = await getSettings();
-
-  // Apply font scale
-  const applyFontScale = (scale) => {
-    document.documentElement.style.fontSize = `${scale}rem`;
-  };
-  applyFontScale(settings.fontScale || 1.0);
-
-  // Apply theme
-  const applyTheme = (themeName) => {
-    document.body.setAttribute("data-theme", themeName || "default");
-  };
-  applyTheme(settings.colorTheme || "default");
-
-  // MutationObserver for SPA rehydrations
-  const mo = new MutationObserver((list) => {
-    // Re-apply theme on large DOM changes
-    if (list.length > 50) applyTheme(settings.colorTheme);
+  // Inicialización de TTS.
+  TTS.initTTS().then((ready) => {
+    if (!ready) console.warn('[WAU] TTS no disponible, usando fallback');
   });
-  mo.observe(document.documentElement, { childList: true, subtree: true });
 
-  // Highlight links option
-  const applyHighlightLinks = (on) => {
-    document.documentElement.setAttribute('data-highlight-links', on ? '1' : '0');
-  };
-  applyHighlightLinks(settings.highlightLinks);
+  // Estado local: copia más reciente de los ajustes para evitar awaits en hot paths.
+  let settings = await Settings.get();
+  Settings.apply(settings);
 
-  // TTS on focus - improved with better element text extraction for ALL elements
-  let ttsEnabled = !!settings.ttsEnabled;
+  // Reaplica los ajustes que las SPAs pueden borrar al re-renderizar.
+  // En lugar de heurística por número de mutaciones, observa el atributo
+  // específico que pueden sobrescribir.
+  const reapplyOnAttrChange = new MutationObserver(() => {
+    if (document.body?.getAttribute('data-theme') !== settings.colorTheme) {
+      Settings.apply(settings);
+    }
+  });
+  if (document.body) {
+    reapplyOnAttrChange.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['data-theme', 'class']
+    });
+  }
+
+  // TTS al enfocar elementos.
   let lastSpokenText = '';
   let lastSpokenTime = 0;
-  
-  // Helper function to extract meaningful text from any element
+
   function extractTextFromElement(el) {
     let text = '';
-    
-    // Priority 1: ARIA labels (most specific)
+
     if (el.getAttribute('aria-label')) {
       text = el.getAttribute('aria-label');
-    }
-    // Priority 2: Title attribute
-    else if (el.title) {
+    } else if (el.title) {
       text = el.title;
-    }
-    // Priority 3: Specific element types
-    else if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-      // For inputs, read the label or placeholder
+    } else if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
       const label = el.id ? document.querySelector(`label[for="${el.id}"]`) : null;
       if (label) {
         text = label.innerText || label.textContent;
@@ -94,25 +65,23 @@
       } else {
         text = 'Campo de entrada';
       }
-      // Add the type of input
       if (el.type && text) {
         const typeMap = {
-          'text': 'texto',
-          'email': 'correo electrónico',
-          'password': 'contraseña',
-          'tel': 'teléfono',
-          'number': 'número',
-          'search': 'búsqueda',
-          'url': 'URL',
-          'date': 'fecha',
-          'time': 'hora',
-          'textarea': 'área de texto'
+          text: 'texto',
+          email: 'correo electrónico',
+          password: 'contraseña',
+          tel: 'teléfono',
+          number: 'número',
+          search: 'búsqueda',
+          url: 'URL',
+          date: 'fecha',
+          time: 'hora',
+          textarea: 'área de texto'
         };
         const typeName = typeMap[el.type] || el.type;
         text = `${text}, campo de ${typeName}`;
       }
-    } 
-    else if (el.tagName === 'SELECT') {
+    } else if (el.tagName === 'SELECT') {
       const label = el.id ? document.querySelector(`label[for="${el.id}"]`) : null;
       if (label) {
         text = label.innerText || label.textContent;
@@ -122,210 +91,136 @@
         text = 'Selector';
       }
       text = `${text}, menú de selección`;
-      // Add current selection
       if (el.selectedOptions && el.selectedOptions[0]) {
         text += `, ${el.selectedOptions[0].text}`;
       }
-    }
-    else if (el.tagName === 'BUTTON') {
+    } else if (el.tagName === 'BUTTON') {
       text = el.innerText || el.textContent || 'Botón';
-      if (!text || text === 'Botón') {
-        text = 'Botón';
-      }
-    } 
-    else if (el.tagName === 'A') {
+      if (!text || text === 'Botón') text = 'Botón';
+    } else if (el.tagName === 'A') {
       text = el.innerText || el.textContent || 'Enlace';
-      // Only add "enlace" suffix if not already in text
       if (text && !text.toLowerCase().includes('enlace')) {
         text = `${text}, enlace`;
       }
-    } 
-    else if (el.tagName === 'IMG') {
+    } else if (el.tagName === 'IMG') {
       text = el.alt || 'Imagen sin descripción';
-    }
-    // Priority 4: Elements with role attribute
-    else if (el.getAttribute('role')) {
+    } else if (el.getAttribute('role')) {
       const role = el.getAttribute('role');
       const roleMap = {
-        'button': 'botón',
-        'link': 'enlace',
-        'checkbox': 'casilla de verificación',
-        'radio': 'botón de radio',
-        'tab': 'pestaña',
-        'tabpanel': 'panel de pestaña',
-        'menuitem': 'elemento de menú',
-        'option': 'opción',
-        'combobox': 'cuadro combinado',
-        'textbox': 'cuadro de texto',
-        'searchbox': 'cuadro de búsqueda',
-        'slider': 'deslizador',
-        'spinbutton': 'selector numérico',
-        'progressbar': 'barra de progreso',
-        'alert': 'alerta',
-        'dialog': 'diálogo',
-        'navigation': 'navegación',
-        'main': 'contenido principal',
-        'banner': 'banner',
-        'contentinfo': 'información de contenido',
-        'complementary': 'complementario',
-        'form': 'formulario',
-        'search': 'búsqueda',
-        'region': 'región'
+        button: 'botón',
+        link: 'enlace',
+        checkbox: 'casilla de verificación',
+        radio: 'botón de radio',
+        tab: 'pestaña',
+        tabpanel: 'panel de pestaña',
+        menuitem: 'elemento de menú',
+        option: 'opción',
+        combobox: 'cuadro combinado',
+        textbox: 'cuadro de texto',
+        searchbox: 'cuadro de búsqueda',
+        slider: 'deslizador',
+        spinbutton: 'selector numérico',
+        progressbar: 'barra de progreso',
+        alert: 'alerta',
+        dialog: 'diálogo',
+        navigation: 'navegación',
+        main: 'contenido principal',
+        banner: 'banner',
+        contentinfo: 'información de contenido',
+        complementary: 'complementario',
+        form: 'formulario',
+        search: 'búsqueda',
+        region: 'región'
       };
       const roleName = roleMap[role] || role;
       text = el.innerText || el.textContent || roleName;
-      // Add role description if text doesn't describe it
       if (text && !text.toLowerCase().includes(roleName.toLowerCase())) {
         text = `${text}, ${roleName}`;
       }
-    }
-    // Priority 5: Headings with level
-    else if (el.tagName && el.tagName.match(/^H[1-6]$/)) {
+    } else if (el.tagName && el.tagName.match(/^H[1-6]$/)) {
       const level = el.tagName.charAt(1);
       text = el.innerText || el.textContent || '';
-      if (text) {
-        text = `Encabezado nivel ${level}, ${text}`;
-      }
-    }
-    // Priority 6: Lists
-    else if (el.tagName === 'LI') {
+      if (text) text = `Encabezado nivel ${level}, ${text}`;
+    } else if (el.tagName === 'LI') {
       text = el.innerText || el.textContent || '';
-      if (text) {
-        text = `Elemento de lista, ${text}`;
-      }
-    }
-    // Priority 7: Generic clickable/focusable elements
-    else if (el.tabIndex >= 0 || el.onclick) {
+      if (text) text = `Elemento de lista, ${text}`;
+    } else if (el.tabIndex >= 0 || el.onclick) {
       text = el.innerText || el.textContent || '';
-      if (text) {
-        text = `Elemento interactivo, ${text}`;
-      }
-    }
-    // Priority 8: Any other element with text content
-    else {
+      if (text) text = `Elemento interactivo, ${text}`;
+    } else {
       text = el.innerText || el.textContent || '';
     }
-    
+
     return text.trim();
   }
-  
+
   document.addEventListener('focusin', async (e) => {
-    if (!ttsEnabled) return;
-    
+    if (!settings.ttsEnabled) return;
+
     const el = e.target;
     let text = extractTextFromElement(el);
-    
-    // If no text found, try to describe the element
+
     if (!text && el.tagName) {
       const tagMap = {
-        'DIV': 'División',
-        'SPAN': 'Texto',
-        'P': 'Párrafo',
-        'SECTION': 'Sección',
-        'ARTICLE': 'Artículo',
-        'HEADER': 'Encabezado de página',
-        'FOOTER': 'Pie de página',
-        'NAV': 'Navegación',
-        'ASIDE': 'Contenido lateral',
-        'MAIN': 'Contenido principal'
+        DIV: 'División',
+        SPAN: 'Texto',
+        P: 'Párrafo',
+        SECTION: 'Sección',
+        ARTICLE: 'Artículo',
+        HEADER: 'Encabezado de página',
+        FOOTER: 'Pie de página',
+        NAV: 'Navegación',
+        ASIDE: 'Contenido lateral',
+        MAIN: 'Contenido principal'
       };
       text = tagMap[el.tagName] || el.tagName.toLowerCase();
     }
-    
-    // Final fallback
-    if (!text) {
-      text = 'Elemento enfocado';
-    }
-    
-    // Avoid repeating the same text too quickly (debounce)
+
+    if (!text) text = 'Elemento enfocado';
+
     const now = Date.now();
-    if (text && (text !== lastSpokenText || (now - lastSpokenTime) > 1000)) {
+    if (text !== lastSpokenText || now - lastSpokenTime > 1000) {
       lastSpokenText = text;
       lastSpokenTime = now;
-      
-      // Limit text length
-      if (text.length > 200) {
-        text = text.substring(0, 200) + '...';
-      }
-      
-      console.log('[WAU] Leyendo elemento enfocado:', text.substring(0, 50));
+      if (text.length > 200) text = text.substring(0, 200) + '…';
       await TTS.speak(text);
     }
   }, true);
 
-  // Keyboard navigation
-  if (settings.keyboardNav) {
-    KB.enable({
-      onTab: () => {
-        const activeEl = document.activeElement;
-        if (activeEl && activeEl !== document.body) {
-          activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      },
-      onToggleTTS: () => {
-        ttsEnabled = !ttsEnabled;
-        TTS.stop();
-        
-        // Show visual feedback
-        const feedback = document.createElement('div');
-        feedback.textContent = ttsEnabled ? '🔊 TTS Activado' : '🔇 TTS Desactivado';
-        feedback.style.cssText = `
-          position: fixed;
-          top: 20px;
-          right: 20px;
-          background: ${ttsEnabled ? '#4caf50' : '#f44336'};
-          color: white;
-          padding: 12px 20px;
-          border-radius: 8px;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          font-size: 14px;
-          font-weight: 600;
-          z-index: 2147483647;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-          animation: wau-fade-in-out 2s ease;
-        `;
-        document.body.appendChild(feedback);
-        setTimeout(() => feedback.remove(), 2000);
-        
-        // Update settings
-        settings.ttsEnabled = ttsEnabled;
-        setSettings(settings);
-        
-        console.log('[WAU] TTS', ttsEnabled ? 'activado' : 'desactivado');
-      },
-      onIncreaseFont: () => {
-        settings.fontScale = Math.min(2.0, (settings.fontScale || 1.0) + 0.1);
-        applyFontScale(settings.fontScale);
-        setSettings(settings);
-      },
-      onDecreaseFont: () => {
-        settings.fontScale = Math.max(0.8, (settings.fontScale || 1.0) - 0.1);
-        applyFontScale(settings.fontScale);
-        setSettings(settings);
+  // Atajos de teclado.
+  KB.enable({
+    onTab: () => {
+      const activeEl = document.activeElement;
+      if (activeEl && activeEl !== document.body) {
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
-    }, settings.shortcuts);
-  }
+    },
+    onToggleTTS: () => {
+      const next = !settings.ttsEnabled;
+      TTS.stop();
+      Settings.update({ ttsEnabled: next });
 
-  // Listen for messages from popup/options to update settings live
-  chrome.runtime.onMessage.addListener((msg) => {
-    if (msg?.type === 'settings:update') {
-      settings = Object.assign(settings, msg.value || {});
-      applyFontScale(settings.fontScale);
-      applyTheme(settings.colorTheme);
-      applyHighlightLinks(settings.highlightLinks);
-      ttsEnabled = !!settings.ttsEnabled;
+      const feedback = document.createElement('div');
+      feedback.className = 'wau-toast';
+      feedback.dataset.state = next ? 'on' : 'off';
+      feedback.textContent = next ? '🔊 TTS Activado' : '🔇 TTS Desactivado';
+      document.body.appendChild(feedback);
+      setTimeout(() => feedback.remove(), 2000);
+    },
+    onIncreaseFont: () => {
+      const next = Math.min(2.0, (settings.fontScale || 1.0) + 0.1);
+      Settings.update({ fontScale: next });
+    },
+    onDecreaseFont: () => {
+      const next = Math.max(0.8, (settings.fontScale || 1.0) - 0.1);
+      Settings.update({ fontScale: next });
     }
-  });
+  }, settings.shortcuts);
 
-  // Listen for messages from floating widget
-  window.addEventListener('message', (event) => {
-    if (event.source !== window) return;
-    if (event.data?.type === 'wau:settings:update') {
-      settings = Object.assign(settings, event.data.value || {});
-      applyFontScale(settings.fontScale);
-      applyTheme(settings.colorTheme);
-      applyHighlightLinks(settings.highlightLinks);
-      ttsEnabled = !!settings.ttsEnabled;
-    }
+  // Suscripción única: al cambiar settings (desde popup, options, widget o
+  // sincronización entre dispositivos), aplicamos al DOM.
+  Settings.subscribe((next) => {
+    settings = next;
+    Settings.apply(next);
   });
 })();

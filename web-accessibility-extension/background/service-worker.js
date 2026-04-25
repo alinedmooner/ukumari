@@ -1,48 +1,17 @@
 // background/service-worker.js
-// MV3 (Chrome); in Firefox (MV2) this runs as a background script.
-const SETTINGS_KEY = 'user_settings_v1';
+// MV3 (Chrome) / background script (Firefox MV2).
+// Solo gestiona TTS de fallback. Los ajustes los maneja settings-store
+// directamente contra chrome.storage.sync; no se necesita un proxy aquí.
+'use strict';
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.sync.get([SETTINGS_KEY], ({ [SETTINGS_KEY]: s }) => {
-    if (!s) {
-      const defaults = {
-        fontScale: 1.0,
-        colorTheme: "default",
-        highlightLinks: true,
-        ttsEnabled: true,
-        keyboardNav: true,
-        shortcuts: {
-          toggleTTS: "Alt+T",
-          increaseFont: "Alt+Plus",
-          decreaseFont: "Alt+Minus"
-        }
-      };
-      const data = {};
-      data[SETTINGS_KEY] = defaults;
-      chrome.storage.sync.set(data);
-    }
-  });
-});
+importScripts?.('../utils/messages.js');
+const MSG = (typeof self !== 'undefined' && self.WAU_MSG) || { TTS_SPEAK: 'tts:speak' };
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg?.type === "storage:get") {
-    chrome.storage.sync.get([SETTINGS_KEY], (res) => {
-      sendResponse({ ok: true, value: res[SETTINGS_KEY] });
-    });
-    return true;
-  }
-  if (msg?.type === "storage:set") {
-    const data = {};
-    data[SETTINGS_KEY] = msg.value;
-    chrome.storage.sync.set(data, () => sendResponse({ ok: true }));
-    return true;
-  }
-
-  if (msg?.type === "tts:speak") {
-    // Fallback TTS using chrome.tts if speechSynthesis fails in page context
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type === MSG.TTS_SPEAK) {
     try {
-      chrome.tts.speak(msg.text || "", {
-        lang: msg.lang || "es-ES",
+      chrome.tts.speak(msg.text || '', {
+        lang: msg.lang || 'es-ES',
         rate: 1.0,
         enqueue: false
       }, () => sendResponse({ ok: true }));
@@ -50,10 +19,5 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ ok: false, error: e?.message });
     }
     return true;
-  }
-
-  if (msg?.type === "toggleFeature") {
-    // Example: enable/disable features
-    sendResponse({ ok: true });
   }
 });
