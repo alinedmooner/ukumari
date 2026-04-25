@@ -1,9 +1,0 @@
-Pilares:
-
-- Tecnologia y medio ambiente
-- Seguridad y confianza digital
-- Libertades tecnologicas
-- Diversidad e inclusion digital
-- Derechos digitales y derechos de autor
- - Proteccion de estos
-- Herramientas TIC para el trabajo incluyente y seguro
